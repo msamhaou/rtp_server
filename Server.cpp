@@ -36,14 +36,16 @@ int Server::init(int port){
 
 int Server::loop(){
   char buffer[1024];
-  int n = recvfrom(this->socket_fd, buffer, 1024, MSG_WAITALL, &this->socket_address, &this->addr_len); 
-  if (n  < 0)
-  {
-    perror("recv");
-    exit(-1);
-  } 
-  buffer[n] = '\0';
-  printf("%s\n", buffer);
+  while (1){
+    int n = recvfrom(this->socket_fd, buffer, 1024, MSG_WAITALL, &this->socket_address, &this->addr_len); 
+    if (n  < 0)
+    {
+      perror("recv");
+      exit(-1);
+    } 
+    buffer[n] = '\0';
+    printf("%s\n", buffer);
+  }
     return 0;
 }
 

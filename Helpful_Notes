@@ -3,3 +3,125 @@
     SSRC Identifies the synchronization source. The value is chosen randomly, with the intent that no two synchronization sources within the same RTP session will have the same SSRC. Although the probability of multiple sources choosing the same identifier is low, all RTP implementations must be prepared to detect and resolve collisions. If a source changes its source transport address, it must also choose a new SSRC to avoid being interpreted as a looped source.
 
     CSRC An array of 0 to 15 CSRC elements identifying the contributing sources for the payload contained in this packet. The number of identifiers is given by the CC field. If there are more than 15 contributing sources, only 15 may be identified. CSRC identifiers are inserted by mixers, using the SSRC identifiers of contributing sources. For example, for audio packets the SSRC identifiers of all sources that were mixed together to create a packet are listed, allowing correct talker indication at the receiver.
+
+//
+Below is a high-level breakdown of how RTP and RTCP typically operate together in a real-time streaming or VoIP application. While the exact order and mechanics can vary based on the specific protocol stack (e.g., SIP, WebRTC), this should give you a practical overview to guide your coding efforts.
+
+
+Session Initialization
+• The application (or signaling layer) negotiates transport details: IP addresses, ports, and codec details.
+• You learn which ports are used for RTP and which ports are used for RTCP (commonly RTP on port N, and RTCP on port N+1).
+• Each endpoint sets up sockets or UDP connections on these ports.
+
+
+RTP Packet Creation/Sending
+• A sender captures media data (audio, video, etc.) and chunks it into frames or packets.
+• For each packet:
+– Prepare the RTP header: version (2), payload type (e.g., 96 for dynamic video), sequence number, timestamp, SSRC, etc.
+– Append the actual media payload (audio or video data).
+– Send the packet via the UDP socket bound to the RTP port.
+
+
+RTCP Packet Creation/Sending
+• In parallel, each endpoint periodically sends RTCP packets. The two main types are:
+– Sender Reports (SR): Sent by active senders to share transmission and reception stats (including an NTP timestamp + current RTP timestamp).
+– Receiver Reports (RR): Sent by receivers (including senders that are also receiving in a two-way call) to give feedback about packet loss, jitter, etc.
+• You typically batch these reports and send them at intervals (e.g., every 5 seconds, or following RTCP bandwidth guidelines from RFC 3550).
+• The RTCP packets go over the RTCP port (commonly RTP port + 1).
+
+
+Reception and Processing of RTP Packets
+• A receiver listening on the RTP port receives incoming packets.
+• It inspects the RTP header for version, sequence number, payload type, timestamp, and SSRC:
+– If valid and recognized (matches expected SSRC, payload type), it’s passed to the jitter buffer for orderly playback.
+– If the sequence number or SSRC is unexpected, you may discard or handle as an error case.
+• The receiver uses the sequence numbers to detect missing or out-of-order packets; the timestamps help place the media frames in the correct playback order.
+
+
+Reception and Processing of RTCP Packets
+• In parallel, a receiver also listens for RTCP packets on the RTCP port.
+• For Sender Reports (SR):
+– Extract the sender’s NTP timestamp and the corresponding RTP timestamp.
+– This information helps you synchronize the relative RTP clock to an absolute wallclock time.
+• For Receiver Reports (RR):
+– Look at the reported packet loss, jitter, and last SR timestamp.
+– This helps measure network performance, often leading to adjustments in bitrate or playback buffering.
+
+
+Generating Feedback
+• Based on the reception metrics, each endpoint updates its RTCP feedback:
+– If you’re getting many dropped frames, you might reduce video bitrate (if using something like adaptive encoding).
+– You also update your next RTCP RR or SR to reflect your current stats.
+
+
+Synchronization and Clock Mapping
+• If you have multiple streams (e.g., audio and video), you rely on the RTCP Sender Reports (with NTP timestamps) to sync them.
+• This is crucial for lip sync—ensuring that the audio and video are played in sync, even with network jitter.
+
+
+Closing or Tearing Down the Session
+• Eventually, when the call or streaming session ends, a signaling layer typically requests to stop sending media.
+• The sender can send a “BYE” RTCP message to indicate that it’s leaving the session.
+• Any resources or sockets are closed once the session is terminated.
+
+
+
+Example Pseudocode Overview (Simplified)
+
+
+Setup:
+• rtp_socket = open_udp_socket(rtp_port)
+• rtcp_socket = open_udp_socket(rtcp_port)
+
+
+Send RTP:
+• def send_rtp_packet(media_data, sequence_number, timestamp, ssrc):
+rtp_header = construct_rtp_header(
+version=2,
+payload_type=my_payload_type,
+sequence_num=sequence_number,
+timestamp=timestamp,
+ssrc=ssrc
+)
+packet = rtp_header + media_data
+rtp_socket.sendto(packet, (destination_ip, rtp_port))
+
+
+Send RTCP (Sender Report, Receiver Report):
+• def send_rtcp_sr(ntp_timestamp, rtp_timestamp, packet_count, octet_count, ssrc):
+sr_packet = construct_sender_report(
+ntp_timestamp=ntp_timestamp,
+rtp_timestamp=rtp_timestamp,
+packet_count=packet_count,
+octet_count=octet_count,
+ssrc=ssrc
+)
+rtcp_socket.sendto(sr_packet, (destination_ip, rtcp_port))
+• def send_rtcp_rr(ssrc, fraction_lost, packets_lost, highest_seq_num, jitter):
+rr_packet = construct_receiver_report(
+ssrc=ssrc,
+fraction_lost=fraction_lost,
+packets_lost=packets_lost,
+highest_seq_num=highest_seq_num,
+jitter=jitter
+)
+rtcp_socket.sendto(rr_packet, (destination_ip, rtcp_port))
+
+
+Receive and Parse RTP:
+• while True:
+packet, _ = rtp_socket.recvfrom(65536)
+rtp_header = parse_rtp_header(packet)
+if valid_header(rtp_header):
+media_payload = packet[rtp_header_length:]
+store_in_jitter_buffer(rtp_header, media_payload)
+
+
+Receive and Parse RTCP:
+• while True:
+rtcp_packet, _ = rtcp_socket.recvfrom(65536)
+parse_and_handle_rtcp(rtcp_packet)
+
+
+
+By following these steps, you’ll ensure your application sends and receives both RTP media data and RTCP control information properly, which is essential for real-time multimedia streaming.
