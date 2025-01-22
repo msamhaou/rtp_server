@@ -9,7 +9,7 @@ Server::~Server(){
   close(this->socket_fd);
 }
 
-int Server::init(int port){
+int Server::init(const int & port){
   int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
   if (socket_fd < 0){
     perror("socket:");
@@ -34,22 +34,25 @@ int Server::init(int port){
   return socket_fd;
 }
 
-int Server::loop(){
-  char buffer[1024];
-  while (1){
-    int n = recvfrom(this->socket_fd, buffer, 1024, MSG_WAITALL, &this->socket_address, &this->addr_len); 
+void* Server::receive(){
+  void * buff;
+
+  buff = malloc(RtpHeader::buffer_len * sizeof(char));
+  int n = recvfrom(this->socket_fd, buff, RtpHeader::buffer_len, MSG_WAITALL, &this->socket_address, &this->addr_len); 
     if (n  < 0)
     {
       perror("recv");
       exit(-1);
-    } 
-    buffer[n] = '\0';
-    printf("%s\n", buffer);
-  }
-    return 0;
+    }
+    return buff;
 }
 
-int Server::start(){
-   int running = 1;
-  return this->loop();
+int Server::send(void * packet) const{
+  if (sendto(this->socket_fd, packet, RtpHeader::buffer_len, MSG_CONFIRM, &this->socket_address, this->addr_len) < 0)
+	{
+		perror("sendto: ");
+		return -1;
+	}
+	return 0;
 }
+

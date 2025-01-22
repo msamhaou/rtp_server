@@ -1,8 +1,12 @@
+#pragma once
 #include <iostream>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include "RTP.hpp"
+
+
 
 class Server{
 private:
@@ -12,7 +16,9 @@ private:
 public:
   Server();
   ~Server();
-  int init(int port);
-  int start();
-  int loop();
+  int init(const int & port);
+  int send(void *) const;
+  void* receive();
 };
+
+// const int RtpHeader::buffer_len;

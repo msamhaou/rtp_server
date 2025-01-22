@@ -6,20 +6,25 @@
 #include <sys/types.h> 
 #include <sys/socket.h> 
 #include <arpa/inet.h> 
-#include <netinet/in.h> 
+#include <netinet/in.h>
+#include "RTP.hpp"
 
 class Client {
 	struct sockaddr socket_address;
-	int sock = -1;
-	size_t addr_len;
+	int socket_fd = -1;
+	unsigned int addr_len;
 public:
 	Client(int port);
-	int send_msg(std::string);
-	int recv_msg();
+	int send(void *) const;
+	void * receive();
 };
 
 Client::Client(int port){
-	this->sock = socket(AF_INET, SOCK_DGRAM, 0);
+	this->socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (this->socket_fd == -1){
+		perror("socket : ");
+		exit(1);
+	}
 	struct sockaddr_in addr;
 		addr.sin_port = htons(port);
 		addr.sin_family = AF_INET;
@@ -29,15 +34,28 @@ Client::Client(int port){
 	memcpy(&this->socket_address, &addr, sizeof(addr));
 }
 
-int Client::send_msg(std::string msg){
-	if (sendto(this->sock, msg.c_str(), msg.length(), MSG_CONFIRM, &this->socket_address, this->addr_len) < 0)
+int Client::send(void * packet) const{
+  if (sendto(this->socket_fd, packet, RtpHeader::buffer_len, MSG_CONFIRM, &this->socket_address, this->addr_len) < 0)
 	{
 		perror("sendto: ");
-		exit(-1);
+		return -1;
 	}
 	return 0;
 }
 
+
+void * Client::receive(){
+  void * buff;
+
+  buff = malloc(RtpHeader::buffer_len * sizeof(char));
+  int n = recvfrom(this->socket_fd, buff, RtpHeader::buffer_len, MSG_WAITALL, &this->socket_address, &this->addr_len); 
+    if (n  < 0)
+    {
+      perror("recv");
+      exit(-1);
+    }
+    return buff;
+}
 
 
 // Driver code 
@@ -46,13 +64,16 @@ int main(int ac, char *argv[]) {
 	if (!argv[1])
 		return -1;
 	int port = std::stoi(argv[1]);
-	Client clt = Client(port);
+	Client s = Client(port);
 
+	ts test;
+	test.i = 200;
+	test.j = 400;
 	while (1){
-		std::string msg;
-		std::getline(std::cin, msg);
-		std::cout << (msg) << std::endl;
-		clt.send_msg(msg);
-		std::cout << "msg sent \n";
+		s.send((void * )&test);
+		void * received = s.receive();
+
+		ts * r = (ts *)received;
+		std::cout << r->j << std::endl;
 	}
 }
